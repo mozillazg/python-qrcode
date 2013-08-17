@@ -34,13 +34,21 @@ class QRCode:
         self.data_cache = None
         self.data_list = []
 
-    def add_data(self, data):
+    def add_data(self, data, optimize=20):
         """
         Add data to this QR Code.
+
+        :param optimize: Data will be split into multiple chunks to optimize
+            the QR size by finding to more compressed modes of at least this
+            length. Set to ``0`` to avoid optimizing at all.
         """
-        if not isinstance(data, util.QRData):
-            data = util.QRData(data)
-        self.data_list.append(data)
+        if isinstance(data, util.QRData):
+            self.data_list.append(data)
+        else:
+            if optimize:
+                self.data_list.extend(util.optimal_data_chunks(data))
+            else:
+                self.data_list.append(util.QRData(data))
         self.data_cache = None
 
     def make(self, fit=True):
@@ -160,7 +168,7 @@ class QRCode:
         out.write("\x1b[1;47m" + (" " * (modcount * 2 + 4)) + "\x1b[0m\n")
         out.flush()
 
-    def make_image(self, image_factory=None):
+    def make_image(self, image_factory=None, **kwargs):
         """
         Make an image from the QR Code data.
 
@@ -178,7 +186,8 @@ class QRCode:
                 from qrcode.image.pil import PilImage
                 image_factory = PilImage
 
-        im = image_factory(self.border, self.modules_count, self.box_size)
+        im = image_factory(self.border, self.modules_count, self.box_size,
+                **kwargs)
         for r in range(self.modules_count):
             for c in range(self.modules_count):
                 if self.modules[r][c]:
@@ -269,19 +278,15 @@ class QRCode:
 
         mask_func = util.mask_func(mask_pattern)
 
-        for col in range(self.modules_count - 1, -1, -2):
+        for col in range(self.modules_count - 1, 0, -2):
 
-            if col == 6:
+            if col <= 6:
                 col -= 1
 
             while True:
 
                 for c in range(2):
 
-                    # Note that col - c looks like a dangerous range (col could
-                    # be 0, causing lookup of -1). However, this isn't possible
-                    # because self.modules_count is always odd so the last
-                    # range item will always be 1.
                     if self.modules[row][col - c] is None:
 
                         dark = False
@@ -305,3 +310,24 @@ class QRCode:
                     row -= inc
                     inc = -inc
                     break
+
+    def get_matrix(self):
+        """
+        Return the QR Code as a multidimensonal array, including the border.
+
+        To return the array without a border, set ``self.border`` to 0 first.
+        """
+        if self.data_cache is None:
+            self.make()
+
+        if not self.border:
+            return self.modules
+
+        width = len(self.modules) + self.border*2
+        code = [[False]*width] * self.border
+        x_border = [False]*self.border
+        for module in self.modules:
+            code.append(x_border + module + x_border)
+        code += [[False]*width] * self.border
+
+        return code

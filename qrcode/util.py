@@ -1,6 +1,8 @@
 import re
 import math
 
+import six
+
 from qrcode import base, exceptions
 
 # QR encoding modes.
@@ -29,7 +31,8 @@ MODE_SIZE_LARGE = {
     MODE_KANJI: 12,
 }
 
-ALPHA_NUM = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:'
+ALPHA_NUM = b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:'
+RE_ALPHA_NUM = re.compile(b'^[' + ALPHA_NUM + b']*\Z')
 
 # The number of bits for numeric delimited data lengths.
 NUMBER_LENGTH = {3: 10, 2: 7, 1: 4}
@@ -242,6 +245,62 @@ def lost_point(modules):
     return lost_point
 
 
+def optimal_data_chunks(data, minimum=4):
+    """
+    An iterator returning QRData chunks optimized to the data content.
+
+    :param minimum: The minimum number of bytes in a row to split as a chunk.
+    """
+    data = to_bytestring(data)
+    re_repeat = b'{' + six.text_type(minimum).encode('ascii') + b',}'
+    num_pattern = re.compile(b'\d' + re_repeat)
+    num_bits = _optimal_split(data, num_pattern)
+    alpha_pattern = re.compile(b'[' + ALPHA_NUM + b']' + re_repeat)
+    for is_num, chunk in num_bits:
+        if is_num:
+            yield QRData(chunk, mode=MODE_NUMBER, check_data=False)
+        else:
+            for is_alpha, sub_chunk in _optimal_split(chunk, alpha_pattern):
+                mode = MODE_ALPHA_NUM if is_alpha else MODE_8BIT_BYTE
+                yield QRData(sub_chunk, mode=mode, check_data=False)
+
+
+def _optimal_split(data, pattern):
+    while data:
+        match = re.search(pattern, data)
+        if not match:
+            break
+        start, end = match.start(), match.end()
+        if start:
+            yield False, data[:start]
+        yield True, data[start:end]
+        data = data[end:]
+    if data:
+        yield False, data
+
+
+def to_bytestring(data):
+    """
+    Convert data to a (utf-8 encoded) byte-string.
+    """
+    if not isinstance(data, six.string_types):
+        data = six.text_type(data)
+    if isinstance(data, six.text_type):
+        data = data.encode('utf-8')
+    return data
+
+
+def optimal_mode(data):
+    """
+    Calculate the optimal mode for this chunk of data.
+    """
+    if data.isdigit():
+        return MODE_NUMBER
+    if RE_ALPHA_NUM.match(data):
+        return MODE_ALPHA_NUM
+    return MODE_8BIT_BYTE
+
+
 class QRData:
     """
     Data held in a QR compatible format.
@@ -249,36 +308,24 @@ class QRData:
     Doesn't currently handle KANJI.
     """
 
-    def __init__(self, data, mode=None):
+    def __init__(self, data, mode=None, check_data=True):
         """
         If ``mode`` isn't provided, the most compact QR data type possible is
         chosen.
         """
-        # Convert data to a (utf-8 encoded) byte-string.
-        if not isinstance(data, basestring):
-            try:
-                data = str(data)
-            except UnicodeEncodeError:
-                data = unicode(data)
-        if isinstance(data, unicode):
-            data = data.encode('utf-8')
-
-        if data.isdigit():
-            auto_mode = MODE_NUMBER
-        elif re.match('^[%s]*$' % re.escape(ALPHA_NUM), data):
-            auto_mode = MODE_ALPHA_NUM
-        else:
-            auto_mode = MODE_8BIT_BYTE
+        if check_data:
+            data = to_bytestring(data)
 
         if mode is None:
-            self.mode = auto_mode
+            self.mode = optimal_mode(data)
         else:
+            self.mode = mode
             if mode not in (MODE_NUMBER, MODE_ALPHA_NUM, MODE_8BIT_BYTE):
                 raise TypeError("Invalid mode (%s)" % mode)
-            if mode < auto_mode:
-                raise ValueError("Provided data can not be represented in "
-                    "mode %s" % mode)
-            self.mode = mode
+            if check_data and mode < optimal_mode(data):
+                raise ValueError(
+                    "Provided data can not be represented in mode "
+                    "{0}".format(mode))
 
         self.data = data
 
@@ -287,12 +334,12 @@ class QRData:
 
     def write(self, buffer):
         if self.mode == MODE_NUMBER:
-            for i in xrange(0, len(self.data), 3):
+            for i in six.moves.xrange(0, len(self.data), 3):
                 chars = self.data[i:i + 3]
                 bit_length = NUMBER_LENGTH[len(chars)]
                 buffer.put(int(chars), bit_length)
         elif self.mode == MODE_ALPHA_NUM:
-            for i in xrange(0, len(self.data), 2):
+            for i in six.moves.xrange(0, len(self.data), 2):
                 chars = self.data[i:i + 2]
                 if len(chars) > 1:
                     buffer.put(ALPHA_NUM.find(chars[0]) * 45 +
@@ -300,8 +347,14 @@ class QRData:
                 else:
                     buffer.put(ALPHA_NUM.find(chars), 6)
         else:
-            for c in self.data:
-                buffer.put(ord(c), 8)
+            if six.PY3:
+                # Iterating a bytestring in Python 3 returns an integer,
+                # no need to ord().
+                data = self.data
+            else:
+                data = [ord(c) for c in self.data]
+            for c in data:
+                buffer.put(c, 8)
 
     def __repr__(self):
         return self.data
@@ -399,41 +452,36 @@ def create_bytes(buffer, rs_blocks):
 
 def create_data(version, error_correction, data_list):
 
-    rs_blocks = base.rs_blocks(version, error_correction)
-
     buffer = BitBuffer()
-
     for data in data_list:
         buffer.put(data.mode, 4)
-        buffer.put(len(data),
-            length_in_bits(data.mode, version))
+        buffer.put(len(data), length_in_bits(data.mode, version))
         data.write(buffer)
 
-    # calc num max data.
-    total_data_count = 0
+    # Calculate the maximum number of bits for the given version.
+    rs_blocks = base.rs_blocks(version, error_correction)
+    bit_limit = 0
     for block in rs_blocks:
-        total_data_count += block.data_count
+        bit_limit += block.data_count * 8
 
-    if len(buffer) > total_data_count * 8:
-        raise exceptions.DataOverflowError("Code length overflow. Data size "
-            "(%s) > size available (%s)" % (len(buffer), total_data_count * 8))
+    if len(buffer) > bit_limit:
+        raise exceptions.DataOverflowError(
+            "Code length overflow. Data size (%s) > size available (%s)" %
+            (len(buffer), bit_limit))
 
-    # end code
-    if len(buffer) + 4 <= total_data_count * 8:
-        buffer.put(0, 4)
-
-    # padding
-    while len(buffer) % 8:
+    # Terminate the bits (add up to four 0s).
+    for i in range(min(bit_limit - len(buffer), 4)):
         buffer.put_bit(False)
 
-    # padding
-    while True:
-        if len(buffer) >= total_data_count * 8:
-            break
-        buffer.put(PAD0, 8)
+    # Delimit the string into 8-bit words, padding with 0s if necessary.
+    delimit = len(buffer) % 8
+    if delimit:
+        for i in range(8 - delimit):
+            buffer.put_bit(False)
 
-        if len(buffer) >= total_data_count * 8:
-            break
-        buffer.put(PAD1, 8)
+    # Add special alternating padding bitstrings until buffer if full.
+    bytes_to_fill = (bit_limit - len(buffer)) // 8
+    for i in range(bytes_to_fill):
+        buffer.put(PAD0 if i % 2 == 0 else PAD1, 8)
 
     return create_bytes(buffer, rs_blocks)

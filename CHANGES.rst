@@ -2,6 +2,63 @@
 Change log
 ==========
 
+HEAD
+====
+
+* 
+
+
+Version 3.1
+===========
+
+* Important fixes for incorrect matches of the alpha-numeric encoding mode.
+  Previously, the pattern would match if a single line was alpha-numeric only
+  (even if others wern't). Also, the two characters ``{`` and ``}`` had snuck
+  in as valid characters. Thanks to Eran Tromer for the report and fix.
+
+* Optimized chunking -- if the parts of the data stream can be encoded more
+  efficiently, the data will be split into chunks of the most efficient modes.
+
+Version 3.1.1
+-------------
+
+* Update change log for to contain version 3.1 changes. :P
+
+* Give the ``qr`` script an ``--optimize`` argument to control the chunk
+  optimization setting.
+
+
+Version 3.0
+===========
+
+* Python 3 support.
+
+* Add QRCode.get_matrix, an easy way to get the matrix array of a QR code
+  including the border. Thanks Hugh Rawlinson.
+
+* Add in a workaround so that Python 2.6 users can use SVG generation (they
+  must install ``lxml``).
+
+* Some initial tests! And tox support (``pip install tox``) for testing across
+  Python platforms.
+
+
+Version 2.7
+===========
+
+* Fix incorrect termination padding.
+
+
+Version 2.6
+===========
+
+* Fix the first four columns incorrectly shifted by one. Thanks to Josep
+  Gómez-Suay for the report and fix.
+
+* Fix strings within 4 bits of the QR version limit being incorrectly
+  terminated. Thanks to zhjie231 for the report.
+
+
 Version 2.5
 ===========
 
@@ -9,6 +66,11 @@ Version 2.5
   attributes available to the underlying PIL Image instance.
 
 * Fixed the first column of the QR Code coming up empty! Thanks to BecoKo.
+
+Version 2.5.1
+-------------
+
+* Fix installation error on Windows.
 
 
 Version 2.4
