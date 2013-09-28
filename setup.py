@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
     name='qrcode',
-    version='3.1.1.post',
+    version='4.0.1.post',
     url='https://github.com/lincolnloop/python-qrcode',
     #download_url='',
     description='QR Code image generator',
@@ -19,15 +19,22 @@ setup(
     scripts=[
         'scripts/qr',
     ],
+    requires=['six'],
+    # Use install_required even though it's not a distutils command because
+    # pip uses it still?
     install_requires=['six'],
     data_files=[('share/man/man1', ['doc/qr.1'])],
     package_data={'': ['LICENSE']},
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 5 - Production/Stable',
         'License :: OSI Approved :: BSD License',
         'Operating System :: OS Independent',
         'Intended Audience :: Developers',
         'Programming Language :: Python',
+        'Programming Language :: Python :: 2.5',
+        'Programming Language :: Python :: 2.6',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.3',
         'Topic :: Multimedia :: Graphics',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],

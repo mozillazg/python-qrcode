@@ -8,6 +8,29 @@ HEAD
 * 
 
 
+Version 4.0
+===========
+
+* Made qrcode work on Python 2.4 - Thanks tcely.
+  Note: officially, qrcode only supports 2.5+.
+
+* Support pure-python PNG generation (via pymaging) for Python 2.6+ -- thanks
+  Adam Wisniewski!
+
+* SVG image generation now supports alternate sizing (the default box size of
+  10 == 1mm per rectangle).
+
+* SVG path image generation allows cleaner SVG output by combining all QR rects
+  into a single path. Thank you, Viktor Stískala.
+
+* Added some extra simple SVG factories that fill the background white.
+
+Version 4.0.1
+-------------
+
+* Fix the pymaging backend not able to save the image to a buffer. Thanks ilj!
+
+
 Version 3.1
 ===========
 
@@ -22,7 +45,7 @@ Version 3.1
 Version 3.1.1
 -------------
 
-* Update change log for to contain version 3.1 changes. :P
+* Update change log to contain version 3.1 changes. :P
 
 * Give the ``qr`` script an ``--optimize`` argument to control the chunk
   optimization setting.
